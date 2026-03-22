@@ -126,13 +126,14 @@ if 'score' not in st.session_state: st.session_state.score = 0
 if 'log' not in st.session_state: st.session_state.log = []
 if 'completadas' not in st.session_state: st.session_state.completadas = []
 
+# CORRECCIÓN AQUÍ: Variables de temperatura inicializadas en 20.0
 if 'vars' not in st.session_state:
     st.session_state.vars = {
         'breaker_main': False, 'compresor': False, 'sp_presion': 0.0, 'presion_actual': 0.0,
-        'tostadora': False, 'sp_temp_tost': 25.0, 'temp_tost_actual': 25.0,
+        'tostadora': False, 'sp_temp_tost': 20.0, 'temp_tost_actual': 20.0,
         'vfd_banda': False, 'sp_hz': 0.0, 'hz_banda': 0.0,
         'dosificador': False, 'sp_peso': 0.0, 'peso_actual': 0.0,
-        'selladora': False, 'sp_temp_sell': 25.0, 'temp_sell_actual': 25.0,
+        'selladora': False, 'sp_temp_sell': 20.0, 'temp_sell_actual': 20.0,
         'auto_mode': False
     }
 
@@ -172,10 +173,12 @@ st.session_state.vars['auto_mode'] = st.sidebar.toggle("🟢 CICLO AUTOMÁTICO",
 
 st.sidebar.markdown("### 🎚️ SETPOINTS (SP)")
 st.session_state.vars['sp_presion'] = st.sidebar.slider("SP Presión (PSI)", 0, 120, int(st.session_state.vars['sp_presion']), 10)
-st.session_state.vars['sp_temp_tost'] = st.sidebar.slider("SP Temp Tostadora (°C)", 25, 250, int(st.session_state.vars['sp_temp_tost']), 10)
+
+# CORRECCIÓN AQUÍ: Sliders de temperatura empiezan en 20
+st.session_state.vars['sp_temp_tost'] = st.sidebar.slider("SP Temp Tostadora (°C)", 20, 250, int(st.session_state.vars['sp_temp_tost']), 10)
 st.session_state.vars['sp_hz'] = st.sidebar.slider("SP VFD Banda (Hz)", 0, 60, int(st.session_state.vars['sp_hz']), 5)
 st.session_state.vars['sp_peso'] = st.sidebar.slider("SP Peso Dosificador (g)", 0, 1000, int(st.session_state.vars['sp_peso']), 50)
-st.session_state.vars['sp_temp_sell'] = st.sidebar.slider("SP Temp Selladora (°C)", 25, 200, int(st.session_state.vars['sp_temp_sell']), 10)
+st.session_state.vars['sp_temp_sell'] = st.sidebar.slider("SP Temp Selladora (°C)", 20, 200, int(st.session_state.vars['sp_temp_sell']), 10)
 
 st.sidebar.markdown("### 🔧 ÓRDENES DE MANTENIMIENTO")
 col_m1, col_m2 = st.sidebar.columns(2)
@@ -209,10 +212,10 @@ if btn_avanzar:
         else: v['presion_actual'] = max(0.0, v['presion_actual'] - 10.0)
         
         # Temp Tostadora
-        if st.session_state.idx == 6: f['falla_tost'] = True # Inducir falla
+        if st.session_state.idx == 6: f['falla_tost'] = True 
         if v['tostadora'] and not f['falla_tost']:
             v['temp_tost_actual'] += (v['sp_temp_tost'] - v['temp_tost_actual']) * 0.3
-        else: v['temp_tost_actual'] = max(25.0, v['temp_tost_actual'] - 15.0)
+        else: v['temp_tost_actual'] = max(20.0, v['temp_tost_actual'] - 15.0) # CORRECCIÓN: Baja a 20°C
         
         # Banda
         if st.session_state.idx == 9: f['atasco_banda'] = True
@@ -228,14 +231,14 @@ if btn_avanzar:
         if st.session_state.idx == 15: f['resistencia_quemada'] = True
         if v['selladora'] and not f['resistencia_quemada']:
             v['temp_sell_actual'] += (v['sp_temp_sell'] - v['temp_sell_actual']) * 0.4
-        else: v['temp_sell_actual'] = max(25.0, v['temp_sell_actual'] - 20.0)
+        else: v['temp_sell_actual'] = max(20.0, v['temp_sell_actual'] - 20.0) # CORRECCIÓN: Baja a 20°C
     else:
         # Todo se apaga
         v['presion_actual'] = max(0.0, v['presion_actual'] - 10.0)
-        v['temp_tost_actual'] = max(25.0, v['temp_tost_actual'] - 10.0)
+        v['temp_tost_actual'] = max(20.0, v['temp_tost_actual'] - 10.0) # CORRECCIÓN: Baja a 20°C
         v['hz_banda'] = 0.0
         v['peso_actual'] = 0.0
-        v['temp_sell_actual'] = max(25.0, v['temp_sell_actual'] - 10.0)
+        v['temp_sell_actual'] = max(20.0, v['temp_sell_actual'] - 10.0) # CORRECCIÓN: Baja a 20°C
 
 # ==========================================
 # 5. RENDER SCADA Y MISIONES
@@ -284,7 +287,7 @@ if st.session_state.idx < 20:
                 st.success("✅ ¡Misión superada!")
                 st.rerun()
             else:
-                st.error("❌ Ajusta los paneles HMI / Herramientas y dale a 'Avanzar Tiempo'.")
+                st.error("❌ Ajusta los paneles HMI / Herramientas y dale a 'EJECUTAR / AVANZAR TIEMPO'.")
 else:
     st.success(f"🏆 ¡Planta Asegurada! Puntaje: {st.session_state.score}/100")
     df = pd.DataFrame([{"Aprendiz": st.session_state.nombre, "Puntaje": st.session_state.score, "Misiones": "20/20"}])
