@@ -7,7 +7,7 @@ import pandas as pd
 st.set_page_config(page_title="HMI Cafetalera", page_icon="☕", layout="wide")
 
 # ==========================================
-# 1. MOTOR GRÁFICO DEL SCADA ANIMADO (SVG) - INTACTO
+# 1. MOTOR GRÁFICO DEL SCADA ANIMADO (SVG)
 # ==========================================
 def render_scada_cafetalera(vars_dict, faults_dict):
     pwr_main = vars_dict['breaker_main']
@@ -52,9 +52,9 @@ def render_scada_cafetalera(vars_dict, faults_dict):
     </style>
     <svg viewBox="0 0 1000 550" width="100%" height="100%" style="background-color: #F4F6F9; border: 3px solid #7F8C8D; border-radius: 8px;">
         <rect x="0" y="0" width="1000" height="40" fill="#00324D"/>
-        <text x="20" y="25" class="scada-txt" fill="#FFF">GEMELO DIGITAL: HMI CAFETALERA "EL BUEN GRANO"</text>
+        <text x="20" y="25" style="font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; fill: #FFFFFF;">GEMELO DIGITAL: HMI CAFETALERA "EL BUEN GRANO"</text>
         <circle cx="950" cy="20" r="10" fill="{c_on if auto_mode else c_off}"/>
-        <text x="890" y="25" class="scada-txt" fill="#FFF">AUTO</text>
+        <text x="890" y="25" style="font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; fill: #FFFFFF;">AUTO</text>
 
         <g style="animation: {anim_comp};">
             <rect x="750" y="70" width="140" height="90" fill="{c_comp}" stroke="#333" stroke-width="3" rx="10"/>
@@ -96,6 +96,10 @@ def render_scada_cafetalera(vars_dict, faults_dict):
         <rect x="630" y="330" width="80" height="50" fill="#FFF" stroke="#333"/>
         <text x="635" y="345" class="scada-label">Temp Sello</text>
         <text x="635" y="365" class="scada-val">{vars_dict['temp_sell_actual']:.1f} °C</text>
+
+        <rect x="780" y="280" width="180" height="70" fill="#FFFFFF" stroke="#39A900" stroke-width="4" rx="10"/>
+        <text x="800" y="305" style="font-family: Arial, sans-serif; font-size: 13px; font-weight: bold; fill: #555;">BOLSAS PRODUCIDAS</text>
+        <text x="825" y="335" style="font-family: 'Courier New', monospace; font-size: 26px; font-weight: bold; fill: #39A900;">{vars_dict.get('bolsas_producidas', 0):04d}</text>
         
     </svg>
     """
@@ -129,7 +133,8 @@ if 'vars' not in st.session_state:
         'vfd_banda': False, 'sp_hz': 0.0, 'hz_banda': 0.0,
         'dosificador': False, 'sp_peso': 0.0, 'peso_actual': 0.0,
         'selladora': False, 'sp_temp_sell': 20.0, 'temp_sell_actual': 20.0,
-        'auto_mode': False
+        'auto_mode': False,
+        'bolsas_producidas': 0  # <--- Nuevo registro para contar la producción en vivo
     }
 
 if 'faults' not in st.session_state:
@@ -142,7 +147,14 @@ if 'faults' not in st.session_state:
 # 3. REGISTRO E INTERFAZ LATERAL
 # ==========================================
 if not st.session_state.registrado:
-    st.title("🖥️ HMI SCADA: Cafetalera El Buen Grano")
+    # Agregamos el logo del SENA en la pantalla de bienvenida
+    col_logo, col_titulo = st.columns([1, 4])
+    with col_logo:
+        try: st.image("logo_sena.png", width=150)
+        except: pass
+    with col_titulo:
+        st.title("🖥️ HMI SCADA: Cafetalera El Buen Grano")
+        
     name = st.text_input("Ingresa tu Nombre Completo / Enter your Full Name:")
     lang_sel = st.radio("Selecciona el Idioma / Select Language:", ["English", "Español (Penalización / Penalty -5 pts)"])
     
@@ -164,6 +176,10 @@ elapsed = datetime.now() - st.session_state.start_time
 mins, secs = divmod(elapsed.seconds, 60)
 
 is_es = st.session_state.lang == "es"
+
+# Agregamos el logo del SENA a la barra lateral
+try: st.sidebar.image("logo_sena.png", use_container_width=True)
+except: pass
 
 st.sidebar.success(f"👨‍💻 {'Jefe de Planta' if is_es else 'Plant Manager'}: {st.session_state.nombre}")
 st.sidebar.markdown(f"<h2 style='text-align: center; color: #E74C3C;'>⏱️ {'TIEMPO' if is_es else 'TIME'}: {mins:02d}:{secs:02d}</h2>", unsafe_allow_html=True)
@@ -233,6 +249,20 @@ if btn_avanzar:
         if v['selladora'] and not f['resistencia_quemada']:
             v['temp_sell_actual'] += (v['sp_temp_sell'] - v['temp_sell_actual']) * 0.4
         else: v['temp_sell_actual'] = max(20.0, v['temp_sell_actual'] - 20.0)
+        
+        # --- NUEVA LÓGICA DE PRODUCCIÓN ESTABLE ---
+        is_stable = (
+            v['compresor'] and not f['fuga_aire'] and v['presion_actual'] >= 80 and
+            v['tostadora'] and not f['falla_tost'] and v['temp_tost_actual'] >= 200 and
+            v['vfd_banda'] and not f['atasco_banda'] and v['hz_banda'] >= 40 and
+            v['dosificador'] and not f['descalibre'] and 480 <= v['peso_actual'] <= 520 and
+            v['selladora'] and not f['resistencia_quemada'] and v['temp_sell_actual'] >= 150 and
+            v['auto_mode']
+        )
+        if is_stable:
+            # Añade bolsas proporcionalmente a la velocidad de la banda si está estable
+            v['bolsas_producidas'] += int(v['hz_banda'] / 10)
+
     else:
         v['presion_actual'] = max(0.0, v['presion_actual'] - 10.0)
         v['temp_tost_actual'] = max(20.0, v['temp_tost_actual'] - 10.0)
@@ -317,18 +347,20 @@ else:
     # CÁLCULO FINAL DE PRODUCCIÓN Y OEE BASADO EN EL TIEMPO
     final_score = st.session_state.score if not is_es else st.session_state.score - 5
     
-    # Lógica de Producción: A más tiempo tarden, más "penalización" en producción tienen.
     tiempo_total_seg = elapsed.seconds
     bolsas_teoricas = 1000 # Meta teórica del turno
     bolsas_perdidas_por_demora = min(tiempo_total_seg, 500) # Pierden 1 bolsa por cada segundo tardado
-    bolsas_reales = bolsas_teoricas - bolsas_perdidas_por_demora
+    
+    # Se fusiona la producción real simulada con la antigua lógica de penalización
+    bolsas_reales = max(st.session_state.vars['bolsas_producidas'], bolsas_teoricas - bolsas_perdidas_por_demora)
+    
     defectuosas = int(bolsas_reales * 0.05) # 5% de defecto histórico por las fallas
     bolsas_buenas = bolsas_reales - defectuosas
     oee_final = (bolsas_buenas / bolsas_teoricas) * 100
     
     st.success(f"🏆 ¡Planta Asegurada! / Plant Secured! Puntaje final / Final Score: {final_score}/100")
     
-    st.info(f"📊 **Formato de Producción Generado Automáticamente / Auto-Generated Production Report**\nTiempo de Operación: {mins} min {secs} sec\nOEE Calculado: {oee_final:.1f}%")
+    st.info(f"📊 **Formato de Producción Generado Automáticamente / Auto-Generated Production Report**\nTiempo de Operación: {mins} min {secs} sec\nBolsas Producidas: {bolsas_reales}\nOEE Calculado: {oee_final:.1f}%")
 
     df = pd.DataFrame([{
         "Aprendiz": st.session_state.nombre, 
