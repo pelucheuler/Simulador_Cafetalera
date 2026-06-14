@@ -3,11 +3,35 @@ import streamlit.components.v1 as components
 import random
 from datetime import datetime
 import pandas as pd
+import requests  # <-- Añadido para enviar datos a internet
+import json      # <-- Añadido para procesar los datos
 
 st.set_page_config(page_title="HMI Cafetalera", page_icon="☕", layout="wide")
 
 # ==========================================
-# 1. MOTOR GRÁFICO DEL SCADA ANIMADO (SVG)
+# 1. INTEGRACIÓN POWER BI WEB (API STREAMING)
+# ==========================================
+POWER_BI_API_URL = "https://api.powerbi.com/beta/cbc2c381-2f2e-4d93-91d1-506c9316ace7/datasets/2ec2fcc1-8c41-4d78-a816-c9ba23772902/rows?experience=power-bi&key=HzvrBpMx7oMDktWg1GYLKgSHfJDCDWeeMcrNhXS7J5F9hKoz%2FCqSSCD5Bl%2FEgCj71M8UCugQxFJGcMUofIJ4Ww%3D%3D"
+
+def push_to_power_bi(v, operador):
+    if not POWER_BI_API_URL: return
+    try:
+        payload = [{
+            "Fecha": datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "Operador": str(operador),
+            "Bolsas_Producidas": int(v.get('bolsas_producidas', 0)),
+            "Presion": float(v['presion_actual']),
+            "Temp_Tostadora": float(v['temp_tost_actual']),
+            "Hz_Banda": float(v['hz_banda']),
+            "Temp_Selladora": float(v['temp_sell_actual'])
+        }]
+        headers = {"Content-Type": "application/json"}
+        requests.post(POWER_BI_API_URL, data=json.dumps(payload), headers=headers, timeout=1)
+    except Exception:
+        pass 
+
+# ==========================================
+# 2. MOTOR GRÁFICO DEL SCADA ANIMADO (SVG)
 # ==========================================
 def render_scada_cafetalera(vars_dict, faults_dict):
     pwr_main = vars_dict['breaker_main']
@@ -106,7 +130,7 @@ def render_scada_cafetalera(vars_dict, faults_dict):
     return svg
 
 # ==========================================
-# 2. ESTILOS Y MEMORIA (Sidebar Blanco)
+# 3. ESTILOS Y MEMORIA (Sidebar Blanco)
 # ==========================================
 st.markdown("""
 <style>
@@ -134,7 +158,7 @@ if 'vars' not in st.session_state:
         'dosificador': False, 'sp_peso': 0.0, 'peso_actual': 0.0,
         'selladora': False, 'sp_temp_sell': 20.0, 'temp_sell_actual': 20.0,
         'auto_mode': False,
-        'bolsas_producidas': 0  # <--- Nuevo registro para contar la producción en vivo
+        'bolsas_producidas': 0
     }
 
 if 'faults' not in st.session_state:
@@ -144,7 +168,7 @@ if 'faults' not in st.session_state:
     }
 
 # ==========================================
-# 3. REGISTRO E INTERFAZ LATERAL
+# 4. REGISTRO E INTERFAZ LATERAL
 # ==========================================
 if not st.session_state.registrado:
     # Agregamos el logo del SENA en la pantalla de bienvenida
@@ -215,7 +239,7 @@ btn_resistencia = st.sidebar.button("Cambiar Resistencia / Change Heater")
 btn_avanzar = st.sidebar.button("⏱️ EJECUTAR TIEMPO / ADVANCE TIME", type="primary", use_container_width=True)
 
 # ==========================================
-# 4. LÓGICA MATEMÁTICA Y DE FALLAS
+# 5. LÓGICA MATEMÁTICA Y DE FALLAS
 # ==========================================
 if btn_reparar_fugas: st.session_state.faults['fuga_aire'] = False
 if btn_reset_tost: st.session_state.faults['falla_tost'] = False
@@ -250,7 +274,7 @@ if btn_avanzar:
             v['temp_sell_actual'] += (v['sp_temp_sell'] - v['temp_sell_actual']) * 0.4
         else: v['temp_sell_actual'] = max(20.0, v['temp_sell_actual'] - 20.0)
         
-        # --- NUEVA LÓGICA DE PRODUCCIÓN ESTABLE ---
+        # --- LÓGICA DE PRODUCCIÓN ESTABLE ---
         is_stable = (
             v['compresor'] and not f['fuga_aire'] and v['presion_actual'] >= 80 and
             v['tostadora'] and not f['falla_tost'] and v['temp_tost_actual'] >= 200 and
@@ -270,8 +294,11 @@ if btn_avanzar:
         v['peso_actual'] = 0.0
         v['temp_sell_actual'] = max(20.0, v['temp_sell_actual'] - 10.0)
 
+    # ---> ENVÍO DE DATOS A POWER BI EN CADA AVANCE <---
+    push_to_power_bi(v, st.session_state.nombre)
+
 # ==========================================
-# 5. RENDER SCADA Y MISIONES
+# 6. RENDER SCADA Y MISIONES
 # ==========================================
 st.markdown('<h1 style="color:#00324D; border-bottom:3px solid #FF671F;">🖥️ SCADA CAFETALERA</h1>', unsafe_allow_html=True)
 components.html(render_scada_cafetalera(st.session_state.vars, st.session_state.faults), height=580)
@@ -372,4 +399,4 @@ else:
         "Bolsas_Defectuosas": defectuosas,
         "OEE_%": round(oee_final, 2)
     }])
-    st.download_button("📥 Descargar Reporte de Producción CSV / Download CSV Report", df.to_csv(index=False), f"Reporte_OEE_{st.session_state.nombre}.csv", "text/csv")
+    st.download_button("📥 Descargar Reporte de Producción CSV / Download CSV Report", df.to_csv(index=False), f"Reporte_OEE_{st.session_state.nombre}.csv", "text/csv")  
